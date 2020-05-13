@@ -192,6 +192,8 @@ class CommandBuffer : public Resource {
   //  enter/exit
   //  stack frame manipulation
   //  explicit timers? or profiling buffer?
+  virtual void BeginScope(void* q, const void* srcloc) {}
+  virtual void EndScope(void* q) {}
 
   // TODO(b/138719910): cross-queue and external acquire/release.
   // virtual Status AcquireBuffer() = 0;

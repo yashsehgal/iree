@@ -26,21 +26,121 @@
 #include "iree/hal/vulkan/native_timeline_semaphore.h"
 #include "iree/hal/vulkan/status_util.h"
 
+//
+#include "third_party/tracy/client/TracyCallstack.hpp"
+#include "third_party/tracy/client/TracyProfiler.hpp"
+
 namespace iree {
 namespace hal {
 namespace vulkan {
 
 DirectCommandQueue::DirectCommandQueue(
-    std::string name, CommandCategoryBitfield supported_categories,
+    std::string name, uint32_t queue_family_index,
+    CommandCategoryBitfield supported_categories,
     const ref_ptr<VkDeviceHandle>& logical_device, VkQueue queue)
     : CommandQueue(std::move(name), supported_categories),
       logical_device_(add_ref(logical_device)),
-      queue_(queue) {}
+      queue_(queue) {
+  assert(m_context != 255);
+
+  m_context = tracy::GetGpuCtxCounter().fetch_add(1, std::memory_order_relaxed);
+  m_head = 0;
+  m_tail = 0;
+  m_oldCnt = 0;
+  m_queryCount = 64 * 1024;
+
+  const auto& syms = logical_device_->syms();
+
+  VkCommandPoolCreateInfo pool_create_info;
+  pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  pool_create_info.pNext = nullptr;
+  pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  pool_create_info.queueFamilyIndex = queue_family_index;
+  syms->vkCreateCommandPool(*logical_device_, &pool_create_info,
+                            logical_device_->allocator(), &command_pool_);
+
+  VkCommandBufferAllocateInfo cmdbuf_info;
+  cmdbuf_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cmdbuf_info.pNext = nullptr;
+  cmdbuf_info.commandPool = command_pool_;
+  cmdbuf_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cmdbuf_info.commandBufferCount = 1;
+  VkCommandBuffer cmdbuf;
+  syms->vkAllocateCommandBuffers(*logical_device_, &cmdbuf_info, &cmdbuf);
+
+  VkPhysicalDeviceProperties prop;
+  syms->vkGetPhysicalDeviceProperties(logical_device_->physical_device(),
+                                      &prop);
+  const float period = prop.limits.timestampPeriod;
+
+  VkQueryPoolCreateInfo poolInfo = {};
+  poolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+  poolInfo.queryCount = m_queryCount;
+  poolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+  while (syms->vkCreateQueryPool(*logical_device_, &poolInfo, nullptr,
+                                 &m_query) != VK_SUCCESS) {
+    m_queryCount /= 2;
+    poolInfo.queryCount = m_queryCount;
+  }
+
+  VkCommandBufferBeginInfo beginInfo = {};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+  VkSubmitInfo submitInfo = {};
+  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submitInfo.commandBufferCount = 1;
+  submitInfo.pCommandBuffers = &cmdbuf;
+
+  syms->vkBeginCommandBuffer(cmdbuf, &beginInfo);
+  syms->vkCmdResetQueryPool(cmdbuf, m_query, 0, m_queryCount);
+  syms->vkEndCommandBuffer(cmdbuf);
+  syms->vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+  syms->vkQueueWaitIdle(queue);
+
+  syms->vkBeginCommandBuffer(cmdbuf, &beginInfo);
+  syms->vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_query,
+                            0);
+  syms->vkEndCommandBuffer(cmdbuf);
+  syms->vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+  syms->vkQueueWaitIdle(queue);
+
+  int64_t tcpu = tracy::Profiler::GetTime();
+  int64_t tgpu;
+  syms->vkGetQueryPoolResults(
+      *logical_device_, m_query, 0, 1, sizeof(tgpu), &tgpu, sizeof(tgpu),
+      VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+
+  syms->vkBeginCommandBuffer(cmdbuf, &beginInfo);
+  syms->vkCmdResetQueryPool(cmdbuf, m_query, 0, 1);
+  syms->vkEndCommandBuffer(cmdbuf);
+  syms->vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+  syms->vkQueueWaitIdle(queue);
+
+  syms->vkFreeCommandBuffers(*logical_device_, command_pool_, 1, &cmdbuf);
+
+  auto item = tracy::Profiler::QueueSerial();
+  tracy::MemWrite(&item->hdr.type, tracy::QueueType::GpuNewContext);
+  tracy::MemWrite(&item->gpuNewContext.cpuTime, tcpu);
+  tracy::MemWrite(&item->gpuNewContext.gpuTime, tgpu);
+  memset(&item->gpuNewContext.thread, 0, sizeof(item->gpuNewContext.thread));
+  tracy::MemWrite(&item->gpuNewContext.period, period);
+  tracy::MemWrite(&item->gpuNewContext.context, m_context);
+  tracy::MemWrite(&item->gpuNewContext.accuracyBits, uint8_t(0));
+  tracy::Profiler::QueueSerialFinish();
+
+  m_res = (int64_t*)tracy::tracy_malloc(sizeof(int64_t) * m_queryCount);
+}
 
 DirectCommandQueue::~DirectCommandQueue() {
   IREE_TRACE_SCOPE0("DirectCommandQueue::dtor");
   absl::MutexLock lock(&queue_mutex_);
   syms()->vkQueueWaitIdle(queue_);
+  Collect(NULL);
+  tracy::tracy_free(m_res);
+  syms()->vkDestroyQueryPool(*logical_device_, m_query, nullptr);
+  syms()->vkDestroyCommandPool(*logical_device_, command_pool_,
+                               logical_device_->allocator());
 }
 
 Status DirectCommandQueue::TranslateBatchInfo(
@@ -108,6 +208,48 @@ Status DirectCommandQueue::TranslateBatchInfo(
   timeline_submit_info->pSignalSemaphoreValues = signal_semaphore_values.data();
 
   return OkStatus();
+}
+
+void DirectCommandQueue::Magic(CommandBuffer* command_buffer) {
+  Collect(static_cast<DirectCommandBuffer*>(command_buffer->impl())->handle());
+}
+
+void DirectCommandQueue::Collect(VkCommandBuffer cmdbuf) {
+  IREE_TRACE_SCOPE0("DirectCommandQueue::Collect");
+
+  if (m_tail == m_head) return;
+
+  unsigned int cnt;
+  if (m_oldCnt != 0) {
+    cnt = m_oldCnt;
+    m_oldCnt = 0;
+  } else {
+    cnt = m_head < m_tail ? m_queryCount - m_tail : m_head - m_tail;
+  }
+
+  while (syms()->vkGetQueryPoolResults(
+             *logical_device_, m_query, m_tail, cnt,
+             sizeof(int64_t) * m_queryCount, m_res, sizeof(int64_t),
+             VK_QUERY_RESULT_64_BIT) == VK_NOT_READY) {
+    m_oldCnt = cnt;
+    if (cmdbuf) return;
+  }
+
+  for (unsigned int idx = 0; idx < cnt; idx++) {
+    auto item = tracy::Profiler::QueueSerial();
+    tracy::MemWrite(&item->hdr.type, tracy::QueueType::GpuTime);
+    tracy::MemWrite(&item->gpuTime.gpuTime, m_res[idx]);
+    tracy::MemWrite(&item->gpuTime.queryId, uint16_t(m_tail + idx));
+    tracy::MemWrite(&item->gpuTime.context, m_context);
+    tracy::Profiler::QueueSerialFinish();
+  }
+
+  if (cmdbuf) {
+    syms()->vkCmdResetQueryPool(cmdbuf, m_query, m_tail, cnt);
+  }
+
+  m_tail += cnt;
+  if (m_tail == m_queryCount) m_tail = 0;
 }
 
 Status DirectCommandQueue::Submit(absl::Span<const SubmissionBatch> batches) {

@@ -480,11 +480,26 @@ class HALModuleState final {
     RETURN_IF_ERROR(FromApiStatus(
         iree_hal_command_buffer_begin(command_buffer.get()), IREE_LOC))
         << "Failed to begin command buffer recording";
+    auto* device_ptr = reinterpret_cast<Device*>(shared_device_.get());
+    auto* queue = device_ptr->dispatch_queues().front();
+    static const tracy::SourceLocationData TracyConcat(
+        __tracy_gpu_source_location, 1){"CommandBuffer", __FUNCTION__, __FILE__,
+                                        (uint32_t)1, 0};
+    reinterpret_cast<CommandBuffer*>(command_buffer.get())
+        ->impl()
+        ->BeginScope(queue, &TracyConcat(__tracy_gpu_source_location, 1));
     return OkStatus();
   }
 
   Status CommandBufferEnd(vm::ref<iree_hal_command_buffer_t> command_buffer) {
     IREE_TRACE_SCOPE0("HALModuleState::CommandBufferEnd");
+    auto* device_ptr = reinterpret_cast<Device*>(shared_device_.get());
+    auto* queue = device_ptr->dispatch_queues().front();
+    reinterpret_cast<CommandBuffer*>(command_buffer.get())
+        ->impl()
+        ->EndScope(queue);
+    queue->Magic(reinterpret_cast<CommandBuffer*>(command_buffer.get()));
+
     RETURN_IF_ERROR(FromApiStatus(
         iree_hal_command_buffer_end(command_buffer.get()), IREE_LOC))
         << "Failed to end command buffer recording";
@@ -603,11 +618,25 @@ class HALModuleState final {
       vm::ref<iree_hal_executable_t> executable, int32_t entry_point,
       uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z) {
     IREE_TRACE_SCOPE0("HALModuleState::CommandBufferDispatch");
+    auto* device_ptr = reinterpret_cast<Device*>(shared_device_.get());
+    auto* queue = device_ptr->dispatch_queues().front();
+    static const tracy::SourceLocationData TracyConcat(
+        __tracy_gpu_source_location, 1){"CommandBufferDispatch", __FUNCTION__,
+                                        __FILE__, (uint32_t)1, 0};
+    reinterpret_cast<CommandBuffer*>(command_buffer.get())
+        ->impl()
+        ->BeginScope(queue, &TracyConcat(__tracy_gpu_source_location, 1));
+
     RETURN_IF_ERROR(FromApiStatus(
         iree_hal_command_buffer_dispatch(command_buffer.get(), executable.get(),
                                          entry_point, workgroup_x, workgroup_y,
                                          workgroup_z),
         IREE_LOC));
+
+    reinterpret_cast<CommandBuffer*>(command_buffer.get())
+        ->impl()
+        ->EndScope(queue);
+
     return OkStatus();
   }
 

@@ -106,12 +106,13 @@ StatusOr<QueueFamilyInfo> SelectQueueFamilies(
   queue_family_info.dispatch_queue_count =
       queue_family_properties[queue_family_info.dispatch_index].queueCount;
 
-  // Try to find a dedicated transfer queue (no compute or graphics caps).
-  // Not all devices have one, and some have only a queue family for
-  // everything and possibly a queue family just for compute/etc. If that
-  // fails then fallback to any queue that supports transfer. Finally, if
-  // /that/ fails then we just won't create a transfer queue and instead use
-  // the compute queue for all operations.
+// Try to find a dedicated transfer queue (no compute or graphics caps).
+// Not all devices have one, and some have only a queue family for
+// everything and possibly a queue family just for compute/etc. If that
+// fails then fallback to any queue that supports transfer. Finally, if
+// /that/ fails then we just won't create a transfer queue and instead use
+// the compute queue for all operations.
+#if 0
   queue_family_info.transfer_index = FindFirstQueueFamilyWithFlags(
       queue_family_properties, VK_QUEUE_TRANSFER_BIT,
       VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT);
@@ -127,6 +128,7 @@ StatusOr<QueueFamilyInfo> SelectQueueFamilies(
     queue_family_info.transfer_queue_count =
         queue_family_properties[queue_family_info.transfer_index].queueCount;
   }
+#endif
 
   // Ensure that we don't share the dispatch queues with transfer queues if
   // that would put us over the queue count.
@@ -176,7 +178,7 @@ absl::InlinedVector<std::unique_ptr<CommandQueue>, 4> CreateCommandQueues(
                            compute_queue_set.queue_family_index, i, &queue);
     std::string queue_name = absl::StrCat(device_info.name(), ":d", i);
     command_queues.push_back(absl::make_unique<DirectCommandQueue>(
-        std::move(queue_name),
+        std::move(queue_name), compute_queue_set.queue_family_index,
         CommandCategory::kDispatch | CommandCategory::kTransfer, logical_device,
         queue));
   }
@@ -190,8 +192,8 @@ absl::InlinedVector<std::unique_ptr<CommandQueue>, 4> CreateCommandQueues(
                            transfer_queue_set.queue_family_index, i, &queue);
     std::string queue_name = absl::StrCat(device_info.name(), ":t", i);
     command_queues.push_back(absl::make_unique<DirectCommandQueue>(
-        std::move(queue_name), CommandCategory::kTransfer, logical_device,
-        queue));
+        std::move(queue_name), transfer_queue_set.queue_family_index,
+        CommandCategory::kTransfer, logical_device, queue));
   }
 
   return command_queues;
@@ -306,7 +308,7 @@ StatusOr<ref_ptr<VulkanDevice>> VulkanDevice::Create(
   device_create_info.pEnabledFeatures = nullptr;
 
   auto logical_device =
-      make_ref<VkDeviceHandle>(syms, enabled_device_extensions,
+      make_ref<VkDeviceHandle>(syms, physical_device, enabled_device_extensions,
                                /*owns_device=*/true, /*allocator=*/nullptr);
   // The Vulkan loader can leak here, depending on which features are enabled.
   // This is out of our control, so disable leak checks.
@@ -395,7 +397,7 @@ StatusOr<ref_ptr<VulkanDevice>> VulkanDevice::Wrap(
 
   // Wrap the provided VkDevice with a VkDeviceHandle for use within the HAL.
   auto device_handle =
-      make_ref<VkDeviceHandle>(syms, enabled_device_extensions,
+      make_ref<VkDeviceHandle>(syms, physical_device, enabled_device_extensions,
                                /*owns_device=*/false, /*allocator=*/nullptr);
   *device_handle->mutable_value() = logical_device;
 

@@ -51,6 +51,9 @@ class DirectCommandBuffer final : public CommandBuffer {
   Status Begin() override;
   Status End() override;
 
+  void BeginScope(void* q, const void* srcloc) override;
+  void EndScope(void* q) override;
+
   Status ExecutionBarrier(
       ExecutionStageBitfield source_stage_mask,
       ExecutionStageBitfield target_stage_mask,

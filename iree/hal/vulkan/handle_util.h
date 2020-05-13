@@ -39,9 +39,11 @@ namespace vulkan {
 class VkDeviceHandle : public RefObject<VkDeviceHandle> {
  public:
   VkDeviceHandle(const ref_ptr<DynamicSymbols>& syms,
+                 VkPhysicalDevice physical_device,
                  DeviceExtensions enabled_extensions, bool owns_device,
                  const VkAllocationCallbacks* allocator = nullptr)
       : syms_(add_ref(syms)),
+        physical_device_(physical_device),
         enabled_extensions_(enabled_extensions),
         owns_device_(owns_device),
         allocator_(allocator) {}
@@ -53,6 +55,7 @@ class VkDeviceHandle : public RefObject<VkDeviceHandle> {
       : value_(absl::exchange(other.value_,
                               static_cast<VkDevice>(VK_NULL_HANDLE))),
         syms_(std::move(other.syms_)),
+        physical_device_(other.physical_device_),
         enabled_extensions_(other.enabled_extensions_),
         owns_device_(other.owns_device_),
         allocator_(other.allocator_) {}
@@ -70,6 +73,7 @@ class VkDeviceHandle : public RefObject<VkDeviceHandle> {
   operator VkDevice() const noexcept { return value_; }
 
   const ref_ptr<DynamicSymbols>& syms() const noexcept { return syms_; }
+  VkPhysicalDevice physical_device() const noexcept { return physical_device_; }
   const VkAllocationCallbacks* allocator() const noexcept { return allocator_; }
 
   const DeviceExtensions& enabled_extensions() const {
@@ -79,6 +83,7 @@ class VkDeviceHandle : public RefObject<VkDeviceHandle> {
  private:
   VkDevice value_ = VK_NULL_HANDLE;
   ref_ptr<DynamicSymbols> syms_;
+  VkPhysicalDevice physical_device_;
   DeviceExtensions enabled_extensions_;
   bool owns_device_;
   const VkAllocationCallbacks* allocator_ = nullptr;

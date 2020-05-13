@@ -36,7 +36,7 @@ namespace vulkan {
 // Command queue implementation directly maps to VkQueue.
 class DirectCommandQueue final : public CommandQueue {
  public:
-  DirectCommandQueue(std::string name,
+  DirectCommandQueue(std::string name, uint32_t queue_family_index,
                      CommandCategoryBitfield supported_categories,
                      const ref_ptr<VkDeviceHandle>& logical_device,
                      VkQueue queue);
@@ -50,7 +50,11 @@ class DirectCommandQueue final : public CommandQueue {
 
   Status WaitIdle(absl::Time deadline) override;
 
- private:
+  void Collect(VkCommandBuffer cmdbuf);
+
+  void Magic(CommandBuffer* command_buffer) override;
+
+ public:
   Status TranslateBatchInfo(const SubmissionBatch& batch,
                             VkSubmitInfo* submit_info,
                             VkTimelineSemaphoreSubmitInfo* timeline_submit_info,
@@ -61,6 +65,28 @@ class DirectCommandQueue final : public CommandQueue {
   // VkQueue needs to be externally synchronized.
   mutable absl::Mutex queue_mutex_;
   VkQueue queue_ ABSL_GUARDED_BY(queue_mutex_);
+
+  // DO NOT SUBMIT
+
+  inline unsigned int NextQueryId() {
+    const auto id = m_head;
+    m_head = (m_head + 1) % m_queryCount;
+    assert(m_head != m_tail);
+    return id;
+  }
+
+  inline uint8_t GetId() const { return m_context; }
+
+  VkQueryPool m_query;
+  VkCommandPool command_pool_;
+  uint8_t m_context;
+
+  unsigned int m_head;
+  unsigned int m_tail;
+  unsigned int m_oldCnt;
+  unsigned int m_queryCount;
+
+  int64_t* m_res;
 };
 
 }  // namespace vulkan

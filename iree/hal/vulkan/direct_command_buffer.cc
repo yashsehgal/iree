@@ -21,6 +21,7 @@
 #include "iree/base/source_location.h"
 #include "iree/base/status.h"
 #include "iree/base/tracing.h"
+#include "iree/hal/vulkan/direct_command_queue.h"
 #include "iree/hal/vulkan/status_util.h"
 
 namespace iree {
@@ -191,6 +192,40 @@ Status DirectCommandBuffer::End() {
   is_recording_ = false;
 
   return OkStatus();
+}
+
+void DirectCommandBuffer::BeginScope(void* q, const void* srcloc) {
+  auto* queue = (DirectCommandQueue*)q;
+  const auto queryId = queue->NextQueryId();
+  syms()->vkCmdWriteTimestamp(command_buffer_,
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queue->m_query,
+                              queryId);
+
+  auto item = tracy::Profiler::QueueSerial();
+  tracy::MemWrite(&item->hdr.type,
+                  tracy::QueueType::GpuZoneBeginCallstackSerial);
+  tracy::MemWrite(&item->gpuZoneBegin.cpuTime, tracy::Profiler::GetTime());
+  tracy::MemWrite(&item->gpuZoneBegin.srcloc, (uint64_t)srcloc);
+  tracy::MemWrite(&item->gpuZoneBegin.thread, tracy::GetThreadHandle());
+  tracy::MemWrite(&item->gpuZoneBegin.queryId, uint16_t(queryId));
+  tracy::MemWrite(&item->gpuZoneBegin.context, queue->GetId());
+  tracy::Profiler::QueueSerialFinish();
+}
+
+void DirectCommandBuffer::EndScope(void* q) {
+  auto* queue = (DirectCommandQueue*)q;
+  const auto queryId = queue->NextQueryId();
+  syms()->vkCmdWriteTimestamp(command_buffer_,
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, queue->m_query,
+                              queryId);
+
+  auto item = tracy::Profiler::QueueSerial();
+  tracy::MemWrite(&item->hdr.type, tracy::QueueType::GpuZoneEndSerial);
+  tracy::MemWrite(&item->gpuZoneEnd.cpuTime, tracy::Profiler::GetTime());
+  tracy::MemWrite(&item->gpuZoneEnd.thread, tracy::GetThreadHandle());
+  tracy::MemWrite(&item->gpuZoneEnd.queryId, uint16_t(queryId));
+  tracy::MemWrite(&item->gpuZoneEnd.context, queue->GetId());
+  tracy::Profiler::QueueSerialFinish();
 }
 
 Status DirectCommandBuffer::ExecutionBarrier(

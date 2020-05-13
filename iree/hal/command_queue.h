@@ -97,6 +97,8 @@ class CommandQueue {
   }
   inline Status WaitIdle() { return WaitIdle(absl::InfiniteFuture()); }
 
+  virtual void Magic(CommandBuffer* command_buffer) {}
+
  protected:
   CommandQueue(std::string name, CommandCategoryBitfield supported_categories)
       : name_(std::move(name)), supported_categories_(supported_categories) {}
