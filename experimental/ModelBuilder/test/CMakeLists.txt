@@ -14,6 +14,9 @@
 
 iree_add_all_subdirs()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
 file(GLOB _GLOB_X_CPP LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.cpp)
 file(GLOB _GLOB_BENCHX LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS Bench*)
 list(REMOVE_ITEM _GLOB_X_CPP ${_GLOB_BENCHX})
@@ -65,6 +68,23 @@ iree_cc_binary(
     MLIREDSC
     MLIRIR
     MLIRSCFTransforms
+    experimental::ModelBuilder
+    experimental::ModelBuilder::ModelRunner
+)
+
+iree_cc_binary(
+  NAME
+    test-depthwise-conv-jit
+  OUT
+    test-depthwise-conv-jit
+  SRCS
+    "TestDepthwiseConvJIT.cpp"
+  DEPS
+    MLIRAllDialects
+    MLIREDSC
+    MLIRIR
+    MLIRSCFTransforms
+    MLIRmlir_runner_utils
     experimental::ModelBuilder
     experimental::ModelBuilder::ModelRunner
 )
@@ -298,6 +318,32 @@ iree_cc_binary(
     benchmark
     experimental::ModelBuilder
     experimental::ModelBuilder::ModelRunner
+)
+
+iree_cc_binary(
+  NAME
+    bench-depthwise-conv-jit
+  OUT
+    bench-depthwise-conv-jit
+  SRCS
+    "BecnhDepthwiseConvJIT.cpp"
+  DEPS
+    :depthwise-conv-builer
+    MLIRAllDialects
+    MLIREDSC
+)
+
+iree_cc_library(
+  NAME
+    depthwise-conv-builer
+  SRCS 
+    "DepthwiseConvBuilder.cpp"
+  HDRS
+    "DepthwiseConvBuilder.h"
+  DEPS
+  experimental::ModelBuilder
+  experimental::ModelBuilder::ModelRunner
+  MLIRIR
 )
 
 # TODO(thomasraoux): Fix bazel_to_cmake tto support shared library

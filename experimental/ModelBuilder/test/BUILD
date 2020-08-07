@@ -42,6 +42,7 @@ iree_lit_test_suite(
         "test-vector-transfers-jit",
         "test-matmul-vulkan",
         "test-vec-to-gpu",
+        "test-depthwise-conv-jit",
         # FileChecker.
         "//iree/tools:IreeFileCheck",
     ],
@@ -57,6 +58,7 @@ cc_binary(
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFTransforms",
+        ":runtime-support.so"
     ],
 )
 
@@ -259,6 +261,49 @@ cc_binary(
     srcs = ["BenchMatMulVectorColumnMajorLLVMIntrinsicsJIT.cpp"],
     copts = ["-O3"],
     deps = [
+        "//experimental/ModelBuilder",
+        "//experimental/ModelBuilder:ModelRunner",
+        "@com_google_benchmark//:benchmark",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+
+
+cc_library(
+    name = "depthwise-conv-builder",
+    srcs = ["DepthwiseConvBuilder.cpp"],
+    hdrs = ["DepthwiseConvBuilder.h"],
+    deps = [
+        "//experimental/ModelBuilder",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_binary(
+    name = "test-depthwise-conv-jit",
+    srcs = ["TestDepthwiseConvJIT.cpp"],
+    copts = ["-O3"],
+    deps = [
+        ":depthwise-conv-builder",
+        "//experimental/ModelBuilder",
+        "//experimental/ModelBuilder:ModelRunner",
+        "@com_google_benchmark//:benchmark",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:mlir_runner_utils",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_binary(
+    name = "bench-depthwise-conv-jit",
+    srcs = ["BenchDepthwiseConvJIT.cpp"],
+    copts = ["-O3"],
+    deps = [
+        ":depthwise-conv-builder",
         "//experimental/ModelBuilder",
         "//experimental/ModelBuilder:ModelRunner",
         "@com_google_benchmark//:benchmark",
