@@ -31,7 +31,12 @@ class DynamicLibraryPosix : public DynamicLibrary {
     // TODO(benvanik): disable if we want to get profiling results.
     //   Sometimes closing the library can prevent proper symbolization on
     //   crashes or in sampling profilers.
+    // TODO(#2833): temporary disable to workaround an issue where dlclose'ing
+    // Mali GPU driver .so causes pthread_mutex_lock getting called on a
+    // destroyed mutex.
+#if !defined(IREE_PLATFORM_ANDROID)
     ::dlclose(library_);
+#endif
   }
 
   static StatusOr<std::unique_ptr<DynamicLibrary>> Load(
