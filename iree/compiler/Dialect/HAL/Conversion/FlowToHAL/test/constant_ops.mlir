@@ -61,3 +61,23 @@ func @fn() {
   flow.variable.store %0, @var_with_initializer : tensor<f32>
   return
 }
+
+
+// DO NOT SUBMIT
+hal.constant_pool @pool attributes {buffer_constraints = #hal.buffer_constraints<max_allocation_size = 1073741824, min_buffer_offset_alignment = 32, max_buffer_range = 134217728, min_buffer_range_alignment = 4>} {
+  hal.constant_pool.span @cst0 : tensor<4xf32> = @_storage[#hal.byte_range<0, 16>]
+  hal.constant_pool.span @cst1 : tensor<3xi8> = @_storage_0[#hal.byte_range<0, 3>]
+  hal.constant_pool.splat @cst2 = dense<1.000000e+00> : tensor<1xf32>
+  hal.constant_pool.splat @cst3 = dense<1234567890> : tensor<8xi32>
+  hal.constant_storage @_storage = dense<[102, 102, 6, 64, -51, -52, 76, 64, -102, -103, -119, 64, -51, -52, -84, 64]> : vector<16xi8>
+  hal.constant_storage @_storage_0 = dense<[6, 7, 8, 0]> : vector<4xi8>
+}
+
+// CHECK: DO NOT SUBMIT
+func @fn1() -> (tensor<4xf32>, tensor<3xi8>, tensor<1xf32>, tensor<8xi32>) {
+  %cst0 = hal.constant_pool.load @pool::@cst0 : tensor<4xf32>
+  %cst1 = hal.constant_pool.load @pool::@cst1 : tensor<3xi8>
+  %cst2 = hal.constant_pool.load @pool::@cst2 : tensor<1xf32>
+  %cst3 = hal.constant_pool.load @pool::@cst3 : tensor<8xi32>
+  return %cst0, %cst1, %cst2, %cst3 : tensor<4xf32>, tensor<3xi8>, tensor<1xf32>, tensor<8xi32>
+}
