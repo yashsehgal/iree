@@ -21,11 +21,14 @@ iree_cc_library(
     "Passes.h"
   SRCS
     "ConvertToHAL.cpp"
+    "IdentifyConstantPools.cpp"
     "InlineDeviceSwitches.cpp"
     "LinkExecutables.cpp"
+    "MaterializeConstantPoolBuffers.cpp"
     "MaterializeInterfaces.cpp"
     "MaterializeResourceCaches.cpp"
     "MemoizeDeviceQueries.cpp"
+    "PackConstantPoolStorage.cpp"
     "Passes.cpp"
     "PublicAbiGeneration.cpp"
     "ResolveEntryPointOrdinals.cpp"
@@ -42,6 +45,7 @@ iree_cc_library(
     iree::base::signature_mangle
     iree::compiler::Dialect::Flow::IR
     iree::compiler::Dialect::HAL::Conversion::FlowToHAL
+    iree::compiler::Dialect::HAL::Conversion::HALToHAL
     iree::compiler::Dialect::HAL::Conversion::IREEToHAL
     iree::compiler::Dialect::HAL::IR
     iree::compiler::Dialect::HAL::IR::HALDialect
