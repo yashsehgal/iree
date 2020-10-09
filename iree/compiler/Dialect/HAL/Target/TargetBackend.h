@@ -124,6 +124,21 @@ class TargetBackend {
   // call to matchPattern. For example, 'vulkan-v1.1' or 'vmla*'.
   virtual std::string filter_pattern() const = 0;
 
+  // Register dependent dialects for the TargetBackend.
+  // Mirrors the method on mlir::Pass of the same name. A TargetBackend is
+  // expected to register the dialects it will create entities for (Operations,
+  // Types, Attributes), other than dialects that exist in the input. These are
+  // the dialects that will be used in |declareTargetOps| and
+  // |buildTranslationPassPipeline|.
+  // TODO(#1036): We might be able to get rid of this with dynamic pass
+  // registration.
+  virtual void getDependentDialects(DialectRegistry &registry) const {}
+
+  // Queries for compile-time known buffer constraints.
+  // These should conservatively represent the min/max values even if the
+  // backend may support others at runtime.
+  virtual BufferConstraintsAttr queryBufferConstraints(MLIRContext *context);
+
   // Creates an interface representing the bindings and push constants required
   // to dispatch the executable. Interfaces used across backends and executables
   // will be deduplicated to reduce code size and runtime overhead and being
@@ -151,16 +166,6 @@ class TargetBackend {
   // as needed based on dispatch context.
   virtual void declareTargetOps(IREE::Flow::ExecutableOp sourceOp,
                                 IREE::HAL::ExecutableOp executableOp);
-
-  // Register dependent dialects for the TargetBackend.
-  // Mirrors the method on mlir::Pass of the same name. A TargetBackend is
-  // expected to register the dialects it will create entities for (Operations,
-  // Types, Attributes), other than dialects that exist in the input. These are
-  // the dialects that will be used in |declareTargetOps| and
-  // |buildTranslationPassPipeline|.
-  // TODO(#1036): We might be able to get rid of this with dynamic pass
-  // registration.
-  virtual void getDependentDialects(DialectRegistry &registry) const {}
 
   // Captured state from the point at which a dispatch is to be recorded.
   struct DispatchState {
