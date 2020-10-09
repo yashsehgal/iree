@@ -36,12 +36,14 @@ using flatbuffers::Vector;
 
 static Offset<Vector<uint8_t>> serializeConstantI8Array(
     DenseIntElementsAttr attr, FlatBufferBuilder &fbb) {
+  // vm.rodata and other very large constants end up as this; since i8 is i8
+  // everywhere (endianness doesn't matter when you have one byte :) we can
+  // directly access the data and memcpy.
   uint8_t *bytePtr = nullptr;
   auto byteVector =
       fbb.CreateUninitializedVector(attr.getNumElements() * 1, &bytePtr);
-  for (const APInt &value : attr.getIntValues()) {
-    *(bytePtr++) = value.extractBitsAsZExtValue(8, 0) & UINT8_MAX;
-  }
+  auto rawData = attr.getRawData();
+  std::memcpy(bytePtr, rawData.data(), rawData.size());
   return byteVector;
 }
 
