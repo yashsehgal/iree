@@ -14,6 +14,8 @@
 
 #include "iree/compiler/Dialect/HAL/IR/HALDialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/HAL/Conversion/HALToVM/ConvertHALToVM.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
@@ -54,10 +56,15 @@ class HALToVMConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(
-        StringRef(hal_imports_create()->data, hal_imports_create()->size),
-        getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef = mlir::parseSourceString(
+          StringRef(hal_imports_create()->data, hal_imports_create()->size),
+          getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(

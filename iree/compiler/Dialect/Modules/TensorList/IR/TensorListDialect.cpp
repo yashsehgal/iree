@@ -14,6 +14,8 @@
 
 #include "iree/compiler/Dialect/Modules/TensorList/IR/TensorListDialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/HAL/Conversion/ConversionDialectInterface.h"
 #include "iree/compiler/Dialect/HAL/IR/HALTypes.h"
 #include "iree/compiler/Dialect/Modules/TensorList/Conversion/ConvertHALToVM.h"
@@ -37,10 +39,16 @@ class TensorListToVMConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(StringRef(tensorlist_imports_create()->data,
-                                             tensorlist_imports_create()->size),
-                                   getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef =
+          mlir::parseSourceString(StringRef(tensorlist_imports_create()->data,
+                                            tensorlist_imports_create()->size),
+                                  getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(

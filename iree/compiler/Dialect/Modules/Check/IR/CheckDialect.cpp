@@ -14,6 +14,8 @@
 
 #include "iree/compiler/Dialect/Modules/Check/IR/CheckDialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/HAL/Conversion/ConversionDialectInterface.h"
 #include "iree/compiler/Dialect/Modules/Check/Conversion/ConversionPatterns.h"
 #include "iree/compiler/Dialect/Modules/Check/IR/CheckOps.h"
@@ -33,10 +35,15 @@ class CheckToVmConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(
-        StringRef(check_imports_create()->data, check_imports_create()->size),
-        getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef = mlir::parseSourceString(
+          StringRef(check_imports_create()->data, check_imports_create()->size),
+          getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(

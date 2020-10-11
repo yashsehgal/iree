@@ -14,6 +14,8 @@
 
 #include "iree/compiler/Dialect/VMLA/IR/VMLADialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/VM/Conversion/ConversionDialectInterface.h"
 #include "iree/compiler/Dialect/VMLA/Conversion/VMLAToVM/ConvertVMLAToVM.h"
 #include "iree/compiler/Dialect/VMLA/IR/VMLAOps.h"
@@ -35,10 +37,15 @@ class VMLAToVMConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(
-        StringRef(vmla_imports_create()->data, vmla_imports_create()->size),
-        getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef = mlir::parseSourceString(
+          StringRef(vmla_imports_create()->data, vmla_imports_create()->size),
+          getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(

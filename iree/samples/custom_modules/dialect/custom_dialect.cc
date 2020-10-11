@@ -14,6 +14,8 @@
 
 #include "iree/samples/custom_modules/dialect/custom_dialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/HAL/Conversion/ConversionDialectInterface.h"
 #include "iree/compiler/Dialect/VM/Conversion/ConversionDialectInterface.h"
 #include "iree/samples/custom_modules/dialect/conversion_patterns.h"
@@ -52,10 +54,16 @@ class CustomToVMConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(
-        StringRef(custom_imports_create()->data, custom_imports_create()->size),
-        getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef =
+          mlir::parseSourceString(StringRef(custom_imports_create()->data,
+                                            custom_imports_create()->size),
+                                  getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(
