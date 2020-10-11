@@ -34,7 +34,7 @@ class VMConversionDialectInterface
   // Returns a module containing one or more vm.modules with vm.import ops.
   // These modules will be merged into the module being compiled to provide
   // import definitions to the conversion and lowering process.
-  virtual OwningModuleRef getVMImportModule() const = 0;
+  virtual mlir::ModuleOp getVMImportModule() const = 0;
 
   // Populates |patterns| with rewrites that convert from the implementation
   // dialect to the VM dialect. Many of these can just be default conversions

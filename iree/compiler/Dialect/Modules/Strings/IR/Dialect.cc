@@ -14,6 +14,8 @@
 
 #include "iree/compiler/Dialect/Modules/Strings/IR/Dialect.h"
 
+#include <mutex>
+
 #include "iree/compiler/Dialect/Modules/Strings/Conversion/StringsToVM.h"
 #include "iree/compiler/Dialect/Modules/Strings/IR/Ops.h"
 #include "iree/compiler/Dialect/Modules/Strings/strings.imports.h"
@@ -36,10 +38,16 @@ class StringsToVMConversionInterface : public VMConversionDialectInterface {
  public:
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
-  OwningModuleRef getVMImportModule() const override {
-    return mlir::parseSourceString(StringRef(strings_imports_create()->data,
-                                             strings_imports_create()->size),
-                                   getDialect()->getContext());
+  mlir::ModuleOp getVMImportModule() const override {
+    static OwningModuleRef importModuleRef;
+    static std::once_flag parseOnce;
+    std::call_once(parseOnce, [&]() {
+      importModuleRef =
+          mlir::parseSourceString(StringRef(strings_imports_create()->data,
+                                            strings_imports_create()->size),
+                                  getDialect()->getContext());
+    });
+    return importModuleRef.get();
   }
 
   void populateVMConversionPatterns(
