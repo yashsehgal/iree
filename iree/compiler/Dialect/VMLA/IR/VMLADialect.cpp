@@ -38,9 +38,7 @@ class VMLAToVMConversionInterface : public VMConversionDialectInterface {
   using VMConversionDialectInterface::VMConversionDialectInterface;
 
   mlir::ModuleOp getVMImportModule() const override {
-    static OwningModuleRef importModuleRef;
-    static std::once_flag parseOnce;
-    std::call_once(parseOnce, [&]() {
+    std::call_once(importParseFlag, [&]() {
       importModuleRef = mlir::parseSourceString(
           StringRef(vmla_imports_create()->data, vmla_imports_create()->size),
           getDialect()->getContext());
@@ -54,6 +52,10 @@ class VMLAToVMConversionInterface : public VMConversionDialectInterface {
     populateVMLAToVMPatterns(getDialect()->getContext(), typeConverter,
                              importSymbols, patterns);
   }
+
+ private:
+  mutable std::once_flag importParseFlag;
+  mutable OwningModuleRef importModuleRef;
 };
 
 }  // namespace
